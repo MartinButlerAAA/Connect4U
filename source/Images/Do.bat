@@ -1,0 +1,14 @@
+cd C:\Users\marti\Desktop\Images
+processBmp Red.bmp
+processBmp Yellow.bmp
+processBmp Blank.bmp
+processBmp ZL.bmp
+processBmp ZR.bmp
+processBmp L.bmp
+processBmp R.bmp
+processBmp X.bmp
+processBmp Y.bmp
+processBmp B.bmp
+processBmp RedWin.bmp
+processBmp YellowWin.bmp
+processBmp Draw.bmp

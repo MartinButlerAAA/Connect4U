@@ -1,0 +1,15 @@
+#include "ZL.bmp.h"
+#include "ZR.bmp.h"
+#include "L.bmp.h"
+#include "R.bmp.h"
+#include "X.bmp.h"
+#include "Y.bmp.h"
+#include "B.bmp.h"
+
+#include "Red.bmp.h"
+#include "Yellow.bmp.h"
+#include "Blank.bmp.h"
+
+#include "RedWin.bmp.h"
+#include "YellowWin.bmp.h"
+#include "Draw.bmp.h"
