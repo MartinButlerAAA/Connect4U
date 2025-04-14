@@ -14,14 +14,14 @@ static double   combinedScoresY[7][6];		            // Array used to combine ver
 
 // The default values below have been selected after optimisation.
 static double	PIECESDEFAULT = 5.0;	 			    // (x from documentation) tweaked from 4	
-static int		RANDOMDEFAULT = 4;				        // (r from documentation) tweaked from 2
-static double	HORIZONTALDEFAULT = 1.02;		        // (h from documentation) 
-static double	VERTICALDEFAULT = 1.64;			        // (v from documentation)
-static double	DIAGONALDEFAULT = 1.70;			        // (d from documentation)
-static double	NEXTMOVEDEFAULT = 0.7;			        // (n from documentation)
+static double	HORIZONTALDEFAULT = 1.1;		        // (h from documentation) 
+static double	VERTICALDEFAULT = 1.3;			        // (v from documentation)
+static double	DIAGONALDEFAULT = 1.5;			        // (d from documentation)
+static double	NEXTMOVEDEFAULT = 0.5;			        // (n from documentation)
+static double	OPPNTMOVEDEFAULT = 0.7;			        // weighting for adding opponent score.
 
 // Quick approximation of a pow function as the math.h does not seem to be available on Wii U.
-float myPow(float power, float num)
+float myPow(float num, float power)
 {
 	int intPower = (int)power;
 	float retVal = 0;
@@ -30,7 +30,7 @@ float myPow(float power, float num)
 	if (intPower < 0) { return -99.0; }
 	if (intPower >= 100) { return -99.0; }
 
-	if (intPower == 0) { return 0.0; }	// Handle power of 0.
+	if (intPower == 0) { return 1.0; }	// Handle power of 0.
 	if (intPower == 1) { return num; }	// Handle power of 1, i.e. no change.
 
 	// Loop to multiply by the number of times set by power.
@@ -302,7 +302,6 @@ void doCombinedScores(void)
 	double 	horizontalLocal = HORIZONTALDEFAULT;
 	double 	verticalLocal = VERTICALDEFAULT;
 	double 	diagonalLocal = DIAGONALDEFAULT;
-	int		randomLocal = RANDOMDEFAULT;	// Local copy taken so it can be optimised.			
 
 	// Do arrays of 7 by 6 of the scores for vertical.
 	// This can't all be simplified with a loop, positions in the middle of the table are in multiple lines of 4.
@@ -525,10 +524,10 @@ void doCombinedScores(void)
 		{
 			if (gameTable[x][y] == ' ') 
 			{
-				// For each position a random number is selected then added to the corresponding vertical, horizontal and diagonals scores.
+				// For each position the corresponding vertical, horizontal and diagonals scores are added together.
 				// Each of the scores is multiplied by a weighting, before the addition.
-				combinedScoresR[x][y] = (double)(rand() % randomLocal) + (combinedColumnsR[x][y] * verticalLocal) + (combinedRowsR[x][y] * horizontalLocal) + (combinedDiagonalsUpR[x][y] * diagonalLocal) + (combinedDiagonalsDownR[x][y] * diagonalLocal);
-				combinedScoresY[x][y] = (double)(rand() % randomLocal) + (combinedColumnsY[x][y] * verticalLocal) + (combinedRowsY[x][y] * horizontalLocal) + (combinedDiagonalsUpY[x][y] * diagonalLocal) + (combinedDiagonalsDownY[x][y] * diagonalLocal);
+				combinedScoresR[x][y] = (combinedColumnsR[x][y] * verticalLocal) + (combinedRowsR[x][y] * horizontalLocal) + (combinedDiagonalsUpR[x][y] * diagonalLocal) + (combinedDiagonalsDownR[x][y] * diagonalLocal);
+				combinedScoresY[x][y] = (combinedColumnsY[x][y] * verticalLocal) + (combinedRowsY[x][y] * horizontalLocal) + (combinedDiagonalsUpY[x][y] * diagonalLocal) + (combinedDiagonalsDownY[x][y] * diagonalLocal);
 			}
 			else 
 			{
@@ -545,7 +544,6 @@ void doCombinedScores(void)
 // 8 neurons
 int selectMove(void) 
 {	
-	double 	nextMoveLocal = NEXTMOVEDEFAULT;
 	double possibles[7]; 						// array of scores for each column to select move.
 	double highest = -1.0; 						// variable to select the highest to identify the column.
 	int move = 3; 								// The move is set to default to the middle of the table.
@@ -562,11 +560,11 @@ int selectMove(void)
 			{
 				// Calculate the score for the column by adding the red and yellow scores.
 				// It is a good idea to block a position, if it is a good move for the opponent.
-				possibles[x] = combinedScoresY[x][y] + (combinedScoresR[x][y] * 0.8);		// A simple change so that the opponents move is less important in the decision.
+				possibles[x] = combinedScoresY[x][y] + (combinedScoresR[x][y] * OPPNTMOVEDEFAULT);		// A simple change so that the opponents move is less important in the decision.
 				// check if column at top before looking at next move.
 				if (y < 5) 
 				{
-					possibles[x] = possibles[x] - (combinedScoresR[x][y + 1] * nextMoveLocal);
+					possibles[x] = possibles[x] - (combinedScoresR[x][y + 1] * NEXTMOVEDEFAULT);
 				}
 				// check each possible value to see if it is the highest, then capture it and the corresponding move. 
 				if (possibles[x] > highest) 

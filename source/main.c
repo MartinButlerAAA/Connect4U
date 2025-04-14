@@ -35,8 +35,8 @@ void drawBorder()
 	drawLine(XOFFSET + XDISPMAX + 1, YOFFSET, XOFFSET + XDISPMAX + 1, YOFFSET + YDISPMAX, 0x01010100);
 
 	// Add a separator between the headings and the game board.
-	drawLine(XOFFSET, YOFFSET + (SQY * 2), XOFFSET + XDISPMAX, YOFFSET + (SQY * 2), 0x01010100);
 	drawLine(XOFFSET, YOFFSET + (SQY * 2) - 1, XOFFSET + XDISPMAX, YOFFSET + (SQY * 2) - 1, 0x01010100);
+	drawLine(XOFFSET, YOFFSET + (SQY * 2) - 2, XOFFSET + XDISPMAX, YOFFSET + (SQY * 2) - 2, 0x01010100);
 
 
 }
@@ -44,13 +44,11 @@ void drawBorder()
 void displayBoard()     // Function to display the board.
 {
 	// Strings to assembe detials about games won, as display does not work like printf.
-	char swinner[100] 	= "\0";
 	char sred[100]		= "\0";
 	char syellow[100]	= "\0";
 	char sdraw[100]		= "\0";
 
 	// Assemble display strings as API does not work like printf.
-	sprintf(swinner,  "Winner: %c ", winner);
 	sprintf(sred,     "Red:    %i ", Rwin);
 	sprintf(syellow,  "Yellow: %i ", Ywin);
 	sprintf(sdraw,    "Draw:   %i ", Draw);
@@ -60,18 +58,18 @@ void displayBoard()     // Function to display the board.
 	OSScreenClearBufferEx(SCREEN_DRC, 0x80808000u);
 
 	// If the game is over show the result above the board.
-	if (winner == 'Y') { drawImage(300, 80, YellowWinImage, SQX * 3, SQY / 2); }
-	if (winner == 'R') { drawImage(240, 80, RedWinImage, SQX * 3, SQY / 2); }
-	if (winner == 'D') { drawImage(240, 80, DrawImage, SQX * 3, SQY / 2); }
+	if (winner == 'Y') { drawText("Yellow Win\0", 0xFEFE0000, 4, XOFFSET + 8, YOFFSET + 24, SCREEN_TV); }
+	if (winner == 'R') { drawText("Red Win\0",    0xFE000000, 4, XOFFSET + 8, YOFFSET + 24, SCREEN_TV); }
+	if (winner == 'D') { drawText("Draw\0",       0xFEFEFE00, 4, XOFFSET + 8, YOFFSET + 24, SCREEN_TV); }
 
 	// Put the control names above the columns allowing space for the result above.
-	drawImage(SQX, SQY, ZLImage,             (SQX / 2), (SQY * 3 / 2));
-	drawImage(SQX, SQY, ZRImage, (1 * SQX) + (SQX / 2), (SQY * 3 / 2));
-	drawImage(SQX, SQY, LImage,  (2 * SQX) + (SQX / 2), (SQY * 3 / 2));
-	drawImage(SQX, SQY, RImage,  (3 * SQX) + (SQX / 2), (SQY * 3 / 2));
-	drawImage(SQX, SQY, XImage,  (4 * SQX) + (SQX / 2), (SQY * 3 / 2));
-	drawImage(SQX, SQY, YImage,  (5 * SQX) + (SQX / 2), (SQY * 3 / 2));
-	drawImage(SQX, SQY, BImage,  (6 * SQX) + (SQX / 2), (SQY * 3 / 2));
+	drawText("ZL\0", 0xFEFEFE00, 4, XOFFSET + 8,              YOFFSET + SQY + 24, SCREEN_TV);
+	drawText("ZR\0", 0xFEFEFE00, 4, XOFFSET + (1 * SQX) + 8,  YOFFSET + SQY + 24, SCREEN_TV);
+	drawText("L\0",  0xFEFEFE00, 4, XOFFSET + (2 * SQX) + 24, YOFFSET + SQY + 24, SCREEN_TV);
+	drawText("R\0",  0xFEFEFE00, 4, XOFFSET + (3 * SQX) + 24, YOFFSET + SQY + 24, SCREEN_TV);
+	drawText("X\0",  0xFEFEFE00, 4, XOFFSET + (4 * SQX) + 24, YOFFSET + SQY + 24, SCREEN_TV);
+	drawText("Y\0",  0xFEFEFE00, 4, XOFFSET + (5 * SQX) + 24, YOFFSET + SQY + 24, SCREEN_TV);
+	drawText("B\0",  0xFEFEFE00, 4, XOFFSET + (6 * SQX) + 24, YOFFSET + SQY + 24, SCREEN_TV);
 
 	// Draw the graphics for the game table.
 	for (int y = 0; y <= 5; y++)    
@@ -89,14 +87,14 @@ void displayBoard()     // Function to display the board.
 
 	drawBorder();
 
+
 	// Put the text elements on the gamepad screen, showing which controller buttons to use and current scores.
-	OSScreenPutFontEx(SCREEN_DRC,  3,  2, swinner);
-	OSScreenPutFontEx(SCREEN_DRC,  3,  4, "Scores:");
-	OSScreenPutFontEx(SCREEN_DRC,  3,  5, sred);
-	OSScreenPutFontEx(SCREEN_DRC,  3,  6, syellow);
-	OSScreenPutFontEx(SCREEN_DRC,  3,  7, sdraw);
-	OSScreenPutFontEx(SCREEN_DRC,  3, 10, "To play press the button for the column.");
-	OSScreenPutFontEx(SCREEN_DRC,  3, 12, "You play red, the Wii U plays yellow.");
+	drawText("Scores\0",  0xFEFEFE00, 3, 10,  60, SCREEN_DRC);
+	drawText(sred,		  0xFE000000, 3, 10, 100, SCREEN_DRC);
+	drawText(syellow,	  0xFEFE0000, 3, 10, 140, SCREEN_DRC);
+	drawText(sdraw,		  0xFEFEFE00, 3, 10, 180, SCREEN_DRC);
+	drawText("To play press the button for the column.\0", 0xFEFEFE00, 2, 10, 250, SCREEN_DRC);
+	drawText("You play red, the Wii U plays yellow.\0",    0xFEFEFE00, 2, 10, 300, SCREEN_DRC);
 
 	// Flip the screen buffer to show the new display.
     OSScreenFlipBuffersEx(SCREEN_TV);
