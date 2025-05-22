@@ -87,14 +87,18 @@ void displayBoard()     // Function to display the board.
 
 	drawBorder();
 
-
 	// Put the text elements on the gamepad screen, showing which controller buttons to use and current scores.
 	drawText("Scores\0",  0xFEFEFE00, 3, 10,  60, SCREEN_DRC);
 	drawText(sred,		  0xFE000000, 3, 10, 100, SCREEN_DRC);
 	drawText(syellow,	  0xFEFE0000, 3, 10, 140, SCREEN_DRC);
 	drawText(sdraw,		  0xFEFEFE00, 3, 10, 180, SCREEN_DRC);
-	drawText("To play press the button for the column.\0", 0xFEFEFE00, 2, 10, 250, SCREEN_DRC);
-	drawText("You play red, the Wii U plays yellow.\0",    0xFEFEFE00, 2, 10, 300, SCREEN_DRC);
+	drawText("To play press the button for the column.\0",		0xFEFEFE00, 2, 10, 250, SCREEN_DRC);
+	drawText("You play red, the Wii U plays yellow.\0",			0xFEFEFE00, 2, 10, 300, SCREEN_DRC);
+	drawText("To change difficulty press direction buttons.\0", 0xFEFEFE00, 2, 10, 350, SCREEN_DRC);
+
+	if (getDifficulty() == 1)		{ drawText("EASY\0",   0xFEFEFE00, 3, 10, 400, SCREEN_DRC); }
+	else if (getDifficulty() == 2)	{ drawText("MEDIUM\0", 0xFEFEFE00, 3, 10, 400, SCREEN_DRC); }
+	else if (getDifficulty() == 3)	{ drawText("HARD\0",   0xFEFEFE00, 3, 10, 400, SCREEN_DRC); }
 
 	// Flip the screen buffer to show the new display.
     OSScreenFlipBuffersEx(SCREEN_TV);
@@ -104,6 +108,8 @@ void displayBoard()     // Function to display the board.
 
 int main(int argc, char **argv) {
 	VPADStatus status;			// Status returned for the gamepad button.
+	VPADReadError error;		// Error from gamepad.
+
 	int move = 0;				// The player move to pass into the AI.
 	int plays = 0;				// Count to alternate who starts.
 	bool retMove = false;		// Return value to show if player move is valid.
@@ -115,24 +121,39 @@ int main(int argc, char **argv) {
 	setupSound();
 
 	// Set up the game board and display it.
-	clearGameTable();
+	initialiseGame();
 	displayBoard();
 
 	// There must be a main loop on WHBProc running, for the program to correctly operate with the home button.
 	// Home pauses this loop and continues it if resume is selected. There must therefore be one main loop of processing in the main program.
     while (WHBProcIsRunning()) {
-		// Get the VPAD button last pressed.
-        VPADRead(VPAD_CHAN_0, &status, 1, NULL);
 
-		// Select the move value depending on the control.
-		move=0;
-		if (status.trigger & VPAD_BUTTON_ZL) { move=1; }
-		if (status.trigger & VPAD_BUTTON_ZR) { move=2; }
-		if (status.trigger & VPAD_BUTTON_L)  { move=3; }
-		if (status.trigger & VPAD_BUTTON_R)  { move=4; }
-		if (status.trigger & VPAD_BUTTON_X)  { move=5; }
-		if (status.trigger & VPAD_BUTTON_Y)  { move=6; }
-		if (status.trigger & VPAD_BUTTON_B)  { move=7; }
+		move = 0;
+		// Get the VPAD button last pressed.
+		VPADRead(VPAD_CHAN_0, &status, 1, &error);
+		// Check that there were no errors, before processing the button pressed.
+		if (error == VPAD_READ_SUCCESS)
+		{
+			// Select the move value depending on the control.
+			if (status.trigger & VPAD_BUTTON_ZL) { move = 1; }
+			if (status.trigger & VPAD_BUTTON_ZR) { move = 2; }
+			if (status.trigger & VPAD_BUTTON_L) { move = 3; }
+			if (status.trigger & VPAD_BUTTON_R) { move = 4; }
+			if (status.trigger & VPAD_BUTTON_X) { move = 5; }
+			if (status.trigger & VPAD_BUTTON_Y) { move = 6; }
+			if (status.trigger & VPAD_BUTTON_B) { move = 7; }
+
+			// If any of the VPAD arrow buttons are pressed the game difficulty is to be changed.
+			if ((status.trigger & VPAD_BUTTON_UP) ||
+				(status.trigger & VPAD_BUTTON_LEFT) ||
+				(status.trigger & VPAD_BUTTON_RIGHT) ||
+				(status.trigger & VPAD_BUTTON_DOWN))
+			{
+				initialiseGame();
+				changeDifficulty();
+			}
+
+		}
 
 		// If a move has been selected, then attempt the move.
 		if (move != 0)
@@ -163,7 +184,12 @@ int main(int argc, char **argv) {
 				if (winner == 'R') { Rwin++; putsoundSel(WIN); }
 				if (winner == 'D') { Draw++; putsoundSel(DRAW); }
 				displayBoard();	// Update the display with the end of the game.
+
+				// If person won while playing most difficult, call function to adjust weighings so that same moves won't automatically win.
+				if ((winner == 'R') && (getDifficulty() == 3)) { newWeightings(); }
+
 				clearGameTable();
+
 				plays++;
 				if (plays%2 == 1) { calculateMove(); }		// On alternate goes, let the computer go first.
 				OSSleepTicks(OSMillisecondsToTicks(3000));	// Delay so the player can see the last game.

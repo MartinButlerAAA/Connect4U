@@ -1,30 +1,38 @@
 // Connect4AI.c : Java Connect 4 program converted to C/C++ to build under Visual Studio.
 
-#include <stdlib.h>
+#include <stdlib.h>				// For rand() random numbers.
+#include <stdio.h>				// For sprintf.
+#include <string.h>				// For strcat and maybe other functions.
+#include <unistd.h>				// For getcwd.
 #include <stdbool.h>
 #include "Connect4AI.h"
 
-	   char     gameTable[7][6]; 	                    // Standard Connect 4 game board with 7 rows and 6 columns.
-static int      winningColumns[7][3][2];	            // Array of possible vertical winning groups of 4, with counts of 'R' red and 'Y' pieces.
-static int      winningRows[4][6][2];		            // Array of possible horizontal winning groups of 4, with counts of 'R' red and 'Y' pieces.
-static int      winningDiagonalsUp[4][3][2];	        // Array of possible diagonal up/right winning groups of 4, with counts of 'R' red and 'Y' pieces.
-static int      winningDiagonalsDown[4][3][2];	        // Array of possible diagonal down/right winning groups of 4, with counts of 'R' red and 'Y' pieces.
-static double   combinedScoresR[7][6];		            // Array used to combine vertical, horizontal and diagonal scores for each board position for red.
-static double   combinedScoresY[7][6];		            // Array used to combine vertical, horizontal and diagonal scores for each board position for yellow.
+char     gameTable[7][6];						// Standard Connect 4 game board with 7 rows and 6 columns.
+static int      winningColumns[7][3][2];		// Array of possible vertical winning groups of 4, with counts of 'R' red and 'Y' pieces.
+static int      winningRows[4][6][2];			// Array of possible horizontal winning groups of 4, with counts of 'R' red and 'Y' pieces.
+static int      winningDiagonalsUp[4][3][2];	// Array of possible diagonal up/right winning groups of 4, with counts of 'R' red and 'Y' pieces.
+static int      winningDiagonalsDown[4][3][2];	// Array of possible diagonal down/right winning groups of 4, with counts of 'R' red and 'Y' pieces.
+static double   combinedScoresR[7][6];			// Array used to combine vertical, horizontal and diagonal scores for each board position for red.
+static double   combinedScoresY[7][6];			// Array used to combine vertical, horizontal and diagonal scores for each board position for yellow.
+
+static int		moves[42];						// Array of the moves made during the game.
+static int		moveIdx = 0;					// Index to the game moves.
 
 // The default values below have been selected after optimisation.
-static double	PIECESDEFAULT = 5.0;	 			    // (x from documentation) tweaked from 4	
-static double	HORIZONTALDEFAULT = 1.1;		        // (h from documentation) 
-static double	VERTICALDEFAULT = 1.3;			        // (v from documentation)
-static double	DIAGONALDEFAULT = 1.5;			        // (d from documentation)
-static double	NEXTMOVEDEFAULT = 0.5;			        // (n from documentation)
-static double	OPPNTMOVEDEFAULT = 0.7;			        // weighting for adding opponent score.
+static double	PIECESDEFAULT = 6.0;	 		// (x from documentation) tweaked from 4	
+static double	HORIZONTALDEFAULT = 1.1;		// (h from documentation) 
+static double	VERTICALDEFAULT = 1.3;			// (v from documentation)
+static double	DIAGONALDEFAULT = 1.5;			// (d from documentation)
+static double	NEXTMOVEDEFAULT = 0.5;			// (n from documentation)
+static double	OPPNTMOVEDEFAULT = 0.7;			// weighting for adding opponent score.
+
+static int		difficulty = 2;					// game difficulty 1 easy, 2 medium, 3 hard.
 
 // Quick approximation of a pow function as the math.h does not seem to be available on Wii U.
-float myPow(float num, float power)
+double myPow(double num, double power)
 {
 	int intPower = (int)power;
-	float retVal = 0;
+	double retVal = 0;
 
 	// If the power value passed in is outside a sensible range to process, exit with an error code.
 	if (intPower < 0) { return -99.0; }
@@ -38,6 +46,65 @@ float myPow(float num, float power)
 	for (int a = 1; a < intPower; a++)
 	{
 		retVal = retVal * num;
+	}
+	return retVal;
+}
+
+// Write the currently used weightings to a text file so that these can be used next time the game starts up. */
+void writeFile(void)
+{
+	FILE* outFile;
+	char fileName[1000];	
+
+	// Get the current working directory to find where connect is stored so that the weightings go with the game.
+	getcwd(fileName, sizeof(fileName));
+	strcat(fileName, "/wiiu/apps/Connect4/weightings.txt");
+
+	outFile = fopen(fileName, "wt");
+	if ( outFile != NULL)
+	{
+		fprintf(outFile, "%1.2lf %1.2lf %1.2lf %1.2lf %1.2lf %1.2lf \n", PIECESDEFAULT, HORIZONTALDEFAULT, VERTICALDEFAULT, DIAGONALDEFAULT, NEXTMOVEDEFAULT, OPPNTMOVEDEFAULT);
+		// To aid development and diagnostics, the names of the weightings are also output to the text file.
+		fprintf(outFile, "PIECES HORIZONTAL VERTICAL DIAGONAL NEXTMOVE OPPNTMOVE\n");
+		fclose(outFile);
+	}
+}
+
+// Read the currently used weightings from file.
+bool readFile(void)
+{
+	bool retVal = true;	// true indicates that weightings were read correctly.
+
+	FILE* inFile;
+	char fileName[1000];
+
+	// Get the current working directory to find where connect is stored so that the weightings go with the game.
+	getcwd(fileName, sizeof(fileName));
+	strcat(fileName, "/wiiu/apps/Connect4/weightings.txt");
+
+	// If the file is found open it and get the current weightings.
+	inFile = fopen(fileName, "rt");
+	if ( inFile != NULL)
+	{
+		fscanf(inFile, "%lf %lf %lf %lf %lf %lf \n", &PIECESDEFAULT, &HORIZONTALDEFAULT, &VERTICALDEFAULT, &DIAGONALDEFAULT, &NEXTMOVEDEFAULT, &OPPNTMOVEDEFAULT);
+		fclose(inFile);
+//		Now that the file input is working correctly there is no need to display the values read, so it is commented out.
+//		printf("PIECES %2.2lf HORIZONTAL %2.2lf VERTICAL %2.2lf DIAGONAL %2.2lf NEXTMOVE %2.2lf OPPNTMOVE %2.2lf \n\n", PIECESDEFAULT, HORIZONTALDEFAULT, VERTICALDEFAULT, DIAGONALDEFAULT, NEXTMOVEDEFAULT, OPPNTMOVEDEFAULT);
+
+		// Check that the weightings are sensible and limit to defaults if they are erroneous.
+		// Also change the return value to false to show that the weightings file should be re-written.
+		if ((PIECESDEFAULT < 3.0) || (PIECESDEFAULT > 9.0))			{ PIECESDEFAULT = 6.0; retVal = false; }
+		if ((HORIZONTALDEFAULT < 0.3) || (HORIZONTALDEFAULT > 2.2)) { HORIZONTALDEFAULT = 1.1; retVal = false; }
+		if ((VERTICALDEFAULT < 0.3)   || (VERTICALDEFAULT > 2.2))   { VERTICALDEFAULT = 1.3; retVal = false; }
+		if ((DIAGONALDEFAULT < 0.3)   || (DIAGONALDEFAULT > 2.2))   { DIAGONALDEFAULT = 1.5; retVal = false; }
+		if ((NEXTMOVEDEFAULT < 0.3)   || (NEXTMOVEDEFAULT > 2.2))   { NEXTMOVEDEFAULT = 0.6; retVal = false; }
+		if ((OPPNTMOVEDEFAULT < 0.3)  || (OPPNTMOVEDEFAULT > 2.2))  { OPPNTMOVEDEFAULT = 0.8; retVal = false; }
+	}
+	else
+	{
+		// Set the return value to indicate fail if the file could not be opened.
+		// Note if the file is not there the weightings will remain at their initialised default values.
+		retVal = false;
 	}
 	return retVal;
 }
@@ -62,11 +129,27 @@ void clearGameTable()
 			gameTable[x][y] = ' ';
 		}
 	}
+	// Reset to moves array and index ready to record the player moves again.
+	moveIdx = 0;
+	for (int a = 0; a < 42; a++)
+	{
+		moves[a] = 0;
+	}
+}
+
+void initialiseGame(void)
+{
+	clearGameTable();
+	// Read the current weightings from the text file, if this fails create a new weightings text file.
+	if (readFile() == false)
+	{
+		writeFile();	// Call the function to write the weightings to a text file.
+	}
 	return;
 }
 
 // This function checks the move entered and puts it into gameTable if it is a valid move.
-bool putMove(int move) 
+bool putMove(int move)
 {
 	// Only if the move is inside the game table and the column has space is the move used and the function exited.
 	if ((move >= 1) && (move <= 7))
@@ -77,6 +160,9 @@ bool putMove(int move)
 			if (gameTable[move - 1][y] == ' ')
 			{
 				gameTable[move - 1][y] = 'R';
+				// Record the move made to support weighting updates.
+				moves[moveIdx] = move;
+				moveIdx++;
 				return true;
 			}
 		}
@@ -87,70 +173,70 @@ bool putMove(int move)
 
 // This function looks through all of the possible winning lines of 4 to see if there is a winner. If there is a winner R is returned for red or Y for yellow.
 // If the top row of the board is full the game is over and it was a draw, otherwise a space is returned.
-char gameEnded() 
+char gameEnded()
 {
 	// Check for vertical winning lines.
-	for (int x = 0; x < 7; x++) 
+	for (int x = 0; x < 7; x++)
 	{
-		for (int y = 0; y < 3; y++) 
+		for (int y = 0; y < 3; y++)
 		{
-			if ((gameTable[x][y] == 'R') && (gameTable[x][y + 1] == 'R') && (gameTable[x][y + 2] == 'R') && (gameTable[x][y + 3] == 'R')) 
+			if ((gameTable[x][y] == 'R') && (gameTable[x][y + 1] == 'R') && (gameTable[x][y + 2] == 'R') && (gameTable[x][y + 3] == 'R'))
 			{
 				return 'R';
 			}
-			if ((gameTable[x][y] == 'Y') && (gameTable[x][y + 1] == 'Y') && (gameTable[x][y + 2] == 'Y') && (gameTable[x][y + 3] == 'Y')) 
+			if ((gameTable[x][y] == 'Y') && (gameTable[x][y + 1] == 'Y') && (gameTable[x][y + 2] == 'Y') && (gameTable[x][y + 3] == 'Y'))
 			{
 				return 'Y';
 			}
 		}
 	}
 	// Check for horizontal winning lines.
-	for (int x = 0; x < 4; x++) 
+	for (int x = 0; x < 4; x++)
 	{
-		for (int y = 0; y < 6; y++) 
+		for (int y = 0; y < 6; y++)
 		{
-			if ((gameTable[x][y] == 'R') && (gameTable[x + 1][y] == 'R') && (gameTable[x + 2][y] == 'R') && (gameTable[x + 3][y] == 'R')) 
+			if ((gameTable[x][y] == 'R') && (gameTable[x + 1][y] == 'R') && (gameTable[x + 2][y] == 'R') && (gameTable[x + 3][y] == 'R'))
 			{
 				return 'R';
 			}
-			if ((gameTable[x][y] == 'Y') && (gameTable[x + 1][y] == 'Y') && (gameTable[x + 2][y] == 'Y') && (gameTable[x + 3][y] == 'Y')) 
+			if ((gameTable[x][y] == 'Y') && (gameTable[x + 1][y] == 'Y') && (gameTable[x + 2][y] == 'Y') && (gameTable[x + 3][y] == 'Y'))
 			{
 				return 'Y';
 			}
 		}
 	}
 	// Check for diagonal up winning lines.
-	for (int x = 0; x < 4; x++) 
+	for (int x = 0; x < 4; x++)
 	{
-		for (int y = 0; y < 3; y++) 
+		for (int y = 0; y < 3; y++)
 		{
-			if ((gameTable[x][y] == 'R') && (gameTable[x + 1][y + 1] == 'R') && (gameTable[x + 2][y + 2] == 'R') && (gameTable[x + 3][y + 3] == 'R')) 
+			if ((gameTable[x][y] == 'R') && (gameTable[x + 1][y + 1] == 'R') && (gameTable[x + 2][y + 2] == 'R') && (gameTable[x + 3][y + 3] == 'R'))
 			{
 				return 'R';
 			}
-			if ((gameTable[x][y] == 'Y') && (gameTable[x + 1][y + 1] == 'Y') && (gameTable[x + 2][y + 2] == 'Y') && (gameTable[x + 3][y + 3] == 'Y')) 
+			if ((gameTable[x][y] == 'Y') && (gameTable[x + 1][y + 1] == 'Y') && (gameTable[x + 2][y + 2] == 'Y') && (gameTable[x + 3][y + 3] == 'Y'))
 			{
 				return 'Y';
 			}
 		}
 	}
 	// Check for diagonal down winning lines.
-	for (int x = 0; x < 4; x++) 
+	for (int x = 0; x < 4; x++)
 	{
-		for (int y = 3; y < 6; y++) 
+		for (int y = 3; y < 6; y++)
 		{
-			if ((gameTable[x][y] == 'R') && (gameTable[x + 1][y - 1] == 'R') && (gameTable[x + 2][y - 2] == 'R') && (gameTable[x + 3][y - 3] == 'R')) 
+			if ((gameTable[x][y] == 'R') && (gameTable[x + 1][y - 1] == 'R') && (gameTable[x + 2][y - 2] == 'R') && (gameTable[x + 3][y - 3] == 'R'))
 			{
 				return 'R';
 			}
-			if ((gameTable[x][y] == 'Y') && (gameTable[x + 1][y - 1] == 'Y') && (gameTable[x + 2][y - 2] == 'Y') && (gameTable[x + 3][y - 3] == 'Y')) 
+			if ((gameTable[x][y] == 'Y') && (gameTable[x + 1][y - 1] == 'Y') && (gameTable[x + 2][y - 2] == 'Y') && (gameTable[x + 3][y - 3] == 'Y'))
 			{
 				return 'Y';
 			}
 		}
 	}
 	// Check if the top row is full, showing the board is full and therefore the end of the game.
-	if ((gameTable[0][5] != ' ') && (gameTable[1][5] != ' ') && (gameTable[2][5] != ' ') && (gameTable[3][5] != ' ') && (gameTable[4][5] != ' ') && (gameTable[5][5] != ' ') && (gameTable[6][5] != ' ')) 
+	if ((gameTable[0][5] != ' ') && (gameTable[1][5] != ' ') && (gameTable[2][5] != ' ') && (gameTable[3][5] != ' ') && (gameTable[4][5] != ' ') && (gameTable[5][5] != ' ') && (gameTable[6][5] != ' '))
 	{
 		return 'D';
 	}
@@ -161,11 +247,11 @@ char gameEnded()
 
 // This function populates the array of piece counts for each players columns.
 // 21 neurons
-void doWinningColumns() 
+void doWinningColumns()
 {
-	for (int x = 0; x < 7; x++) 
+	for (int x = 0; x < 7; x++)
 	{
-		for (int y = 0; y < 3; y++) 
+		for (int y = 0; y < 3; y++)
 		{
 			winningColumns[x][y][0] = 0;
 			if (gameTable[x][y] == 'R') { winningColumns[x][y][0] = winningColumns[x][y][0] + 1; }
@@ -180,7 +266,7 @@ void doWinningColumns()
 			if (gameTable[x][y + 3] == 'Y') { winningColumns[x][y][1] = winningColumns[x][y][1] + 1; }
 
 			// If both players have pieces, the line is blocked and no longer part of the game, so set the scores to zero.
-			if ((winningColumns[x][y][0] != 0) && (winningColumns[x][y][1] != 0)) 
+			if ((winningColumns[x][y][0] != 0) && (winningColumns[x][y][1] != 0))
 			{
 				winningColumns[x][y][0] = 0;
 				winningColumns[x][y][1] = 0;
@@ -192,11 +278,11 @@ void doWinningColumns()
 
 // This function populates the array of piece counts for each players rows.
 // 24 neurons
-static void doWinningRows() 
+static void doWinningRows()
 {
-	for (int x = 0; x < 4; x++) 
+	for (int x = 0; x < 4; x++)
 	{
-		for (int y = 0; y < 6; y++) 
+		for (int y = 0; y < 6; y++)
 		{
 			winningRows[x][y][0] = 0;
 			if (gameTable[x][y] == 'R') { winningRows[x][y][0] = winningRows[x][y][0] + 1; }
@@ -211,7 +297,7 @@ static void doWinningRows()
 			if (gameTable[x + 3][y] == 'Y') { winningRows[x][y][1] = winningRows[x][y][1] + 1; }
 
 			// If both players have pieces, the line is blocked and no longer part of the game, so set the scores to zero.
-			if ((winningRows[x][y][0] != 0) && (winningRows[x][y][1] != 0)) 
+			if ((winningRows[x][y][0] != 0) && (winningRows[x][y][1] != 0))
 			{
 				winningRows[x][y][0] = 0;
 				winningRows[x][y][1] = 0;
@@ -223,11 +309,11 @@ static void doWinningRows()
 
 // This function populates the array of piece counts for each players diagonals going up/right.
 // 12 neurons
-void doWinningDiagonalsUp() 
+void doWinningDiagonalsUp()
 {
-	for (int x = 0; x < 4; x++) 
+	for (int x = 0; x < 4; x++)
 	{
-		for (int y = 0; y < 3; y++) 
+		for (int y = 0; y < 3; y++)
 		{
 			winningDiagonalsUp[x][y][0] = 0;
 			if (gameTable[x][y] == 'R') { winningDiagonalsUp[x][y][0] = winningDiagonalsUp[x][y][0] + 1; }
@@ -242,7 +328,7 @@ void doWinningDiagonalsUp()
 			if (gameTable[x + 3][y + 3] == 'Y') { winningDiagonalsUp[x][y][1] = winningDiagonalsUp[x][y][1] + 1; }
 
 			// If both players have pieces, the line is blocked and no longer part of the game, so set the scores to zero.
-			if ((winningDiagonalsUp[x][y][0] != 0) && (winningDiagonalsUp[x][y][1] != 0)) 
+			if ((winningDiagonalsUp[x][y][0] != 0) && (winningDiagonalsUp[x][y][1] != 0))
 			{
 				winningDiagonalsUp[x][y][0] = 0;
 				winningDiagonalsUp[x][y][1] = 0;
@@ -254,11 +340,11 @@ void doWinningDiagonalsUp()
 
 // This function populates the array of piece counts for each players diagonals going down/right.
 // 12 neurons
-void doWinningDiagonalsDown() 
+void doWinningDiagonalsDown()
 {
-	for (int x = 0; x < 4; x++) 
+	for (int x = 0; x < 4; x++)
 	{
-		for (int y = 3; y < 6; y++) 
+		for (int y = 3; y < 6; y++)
 		{
 			winningDiagonalsDown[x][y - 3][0] = 0;
 			if (gameTable[x][y] == 'R') { winningDiagonalsDown[x][y - 3][0] = winningDiagonalsDown[x][y - 3][0] + 1; }
@@ -273,7 +359,7 @@ void doWinningDiagonalsDown()
 			if (gameTable[x + 3][y - 3] == 'Y') { winningDiagonalsDown[x][y - 3][1] = winningDiagonalsDown[x][y - 3][1] + 1; }
 
 			// If both players have pieces, the line is blocked and no longer part of the game, so set the scores to zero.
-			if ((winningDiagonalsDown[x][y - 3][0] != 0) && (winningDiagonalsDown[x][y - 3][1] != 0)) 
+			if ((winningDiagonalsDown[x][y - 3][0] != 0) && (winningDiagonalsDown[x][y - 3][1] != 0))
 			{
 				winningDiagonalsDown[x][y - 3][0] = 0;
 				winningDiagonalsDown[x][y - 3][1] = 0;
@@ -285,7 +371,7 @@ void doWinningDiagonalsDown()
 
 // This function populates the combined score array to determine moves.
 // 42 neurons
-void doCombinedScores(void) 
+void doCombinedScores(void)
 {	// The weights is 1 default, 2 current or 3 new
 	// To simplify neuron processing for people to understand the arrays are re-populated to 7x6 to match the game board so that they can be added.
 	double combinedColumnsR[7][6];
@@ -305,7 +391,7 @@ void doCombinedScores(void)
 
 	// Do arrays of 7 by 6 of the scores for vertical.
 	// This can't all be simplified with a loop, positions in the middle of the table are in multiple lines of 4.
-	for (int x = 0; x < 7; x++) 
+	for (int x = 0; x < 7; x++)
 	{
 		combinedColumnsR[x][0] = myPow(piecesLocal, winningColumns[x][0][0]);
 		combinedColumnsR[x][1] = myPow(piecesLocal, winningColumns[x][0][0]) + myPow(piecesLocal, winningColumns[x][1][0]);
@@ -324,7 +410,7 @@ void doCombinedScores(void)
 
 	// Do arrays of 7 by 6 for the scores for horizontal.
 	// This can't all be simplified with a loop, positions in the middle of the table are in multiple lines of 4.
-	for (int y = 0; y < 6; y++) 
+	for (int y = 0; y < 6; y++)
 	{
 		combinedRowsR[0][y] = myPow(piecesLocal, winningRows[0][y][0]);
 		combinedRowsR[1][y] = myPow(piecesLocal, winningRows[0][y][0]) + myPow(piecesLocal, winningRows[1][y][0]);
@@ -518,18 +604,18 @@ void doCombinedScores(void)
 	combinedDiagonalsDownY[6][5] = 0;
 
 	// Go through the board and combine the different scores for each position. However if the position has already been played, set it to 0. 
-	for (int x = 0; x < 7; x++) 
+	for (int x = 0; x < 7; x++)
 	{
-		for (int y = 0; y < 6; y++) 
+		for (int y = 0; y < 6; y++)
 		{
-			if (gameTable[x][y] == ' ') 
+			if (gameTable[x][y] == ' ')
 			{
 				// For each position the corresponding vertical, horizontal and diagonals scores are added together.
 				// Each of the scores is multiplied by a weighting, before the addition.
 				combinedScoresR[x][y] = (combinedColumnsR[x][y] * verticalLocal) + (combinedRowsR[x][y] * horizontalLocal) + (combinedDiagonalsUpR[x][y] * diagonalLocal) + (combinedDiagonalsDownR[x][y] * diagonalLocal);
 				combinedScoresY[x][y] = (combinedColumnsY[x][y] * verticalLocal) + (combinedRowsY[x][y] * horizontalLocal) + (combinedDiagonalsUpY[x][y] * diagonalLocal) + (combinedDiagonalsDownY[x][y] * diagonalLocal);
 			}
-			else 
+			else
 			{
 				// Clearing the array elements that have already been played isn't strictly necessary, but it makes the code easier to debug.
 				combinedScoresR[x][y] = 0;
@@ -542,32 +628,32 @@ void doCombinedScores(void)
 
 // function to look at the combined scores for each column and select the highest as the computer move.
 // 8 neurons
-int selectMove(void) 
-{	
+int selectMove(void)
+{
 	double possibles[7]; 						// array of scores for each column to select move.
 	double highest = -1.0; 						// variable to select the highest to identify the column.
 	int move = 3; 								// The move is set to default to the middle of the table.
 
 	// Go through all columns to calculate the score for each one to select the move.
-	for (int x = 0; x < 7; x++) 
+	for (int x = 0; x < 7; x++)
 	{
 		// The possibles array isn't strictly needed, but helps with debugging and development.
 		possibles[x] = 0.0;
 		// Go through the column to find the next free place.
-		for (int y = 0; y < 6; y++) 
+		for (int y = 0; y < 6; y++)
 		{
-			if (gameTable[x][y] == ' ') 
+			if (gameTable[x][y] == ' ')
 			{
 				// Calculate the score for the column by adding the red and yellow scores.
 				// It is a good idea to block a position, if it is a good move for the opponent.
 				possibles[x] = combinedScoresY[x][y] + (combinedScoresR[x][y] * OPPNTMOVEDEFAULT);		// A simple change so that the opponents move is less important in the decision.
 				// check if column at top before looking at next move.
-				if (y < 5) 
+				if (y < 5)
 				{
 					possibles[x] = possibles[x] - (combinedScoresR[x][y + 1] * NEXTMOVEDEFAULT);
 				}
 				// check each possible value to see if it is the highest, then capture it and the corresponding move. 
-				if (possibles[x] > highest) 
+				if (possibles[x] > highest)
 				{
 					highest = possibles[x];
 					move = x;
@@ -576,14 +662,21 @@ int selectMove(void)
 			}
 		}
 	}
+
+	// To make the game more playable levels of difficulty have been added. Basically the best move is sometimes replaced with a random move to make it easier.
+	// For easy the best move is replaced with a random move quite often, for medium less often and for difficult the best move is always played.
+	if      ((difficulty == 1) && ((rand() % 2) == 1)) { move = rand() % 7; }
+	else if ((difficulty == 2) && ((rand() % 5) == 1)) { move = rand() % 7; }
+
 	// Just in case something has gone wrong, the move is checked to see that there is space for it to fit. 
 	// If there isn't, the table is searched for any valid move.
 	// Coding errors in the neural network meant this happened in the past.
-	if (gameTable[move][5] != ' ') 
+	// The yse of random numbers to make the game easier could also cause an issue.
+	if (gameTable[move][5] != ' ')
 	{
-		for (int x = 0; x < 7; x++) 
+		for (int x = 0; x < 7; x++)
 		{
-			if (gameTable[x][5] == ' ') 
+			if (gameTable[x][5] == ' ')
 			{
 				move = x;
 				break;
@@ -595,24 +688,150 @@ int selectMove(void)
 
 // function to work out the computer move. This calls different functions to calculate the neural network. 
 // Then puts the computer move into the next available space in the chosen column.
-void calculateMove(void) 
-{	// The player selects R for red or Y for Yellow. The weights is 1 default, 2 current or 3 new
+int calculateMove(void)
+{	
 	int move = 0;
 	doWinningColumns();					// 21 neurons
 	doWinningRows();					// 24 neurons
 	doWinningDiagonalsUp();				// 12 neurons
 	doWinningDiagonalsDown();			// 12 neurons
-	doCombinedScores();			// The selection of which weightings to use must be passed to the function.
-	move = selectMove(); // The move selected depends on the player viewpoint as well as weightings.
+	doCombinedScores();					// The selection of which weightings to use must be passed to the function.
+	move = selectMove();				// The move selected depends on the player viewpoint as well as weightings.
 	// put the player move into the game table.
-	for (int y = 0; y < 6; y++) 
+	for (int y = 0; y < 6; y++)
 	{
-		if (gameTable[move][y] == ' ') 
+		if (gameTable[move][y] == ' ')
 		{
+			// Record the move made to support weighting updates.
+			// The computer moves have 11 added to be 11 for first column and 17 for the last column.
+			// This makes it easy to see the difference between the player and computer moves.
+			moves[moveIdx] = move + 11;
+			moveIdx++;
 			gameTable[move][y] = 'Y';
-			// The move is returned to support the command line option.
 			break;
 		}
 	}
+	return move + 11; // Return the move in the format used for logging the game moves.
+}
+
+// This function goes through the game moves to see if the computer moves have changes.
+// Return value of false is no change, true is a change.
+bool repeatGame(void)
+{
+	bool changed = false;
+	int localMove;
+	char winner;
+
+	// If the first recorded move does not have 10 added then the human player went first.
+	if (moves[0] < 10)
+	{
+		clearGameTable();
+		for (int a = 0; a < 22; a = a + 2)
+		{
+			putMove(moves[a]); // Use the recorded players move.
+			winner = gameEnded();
+			if (winner != ' ')
+			{	// This construct just exits the loop if the game has ended
+				break;
+			}
+			localMove = calculateMove();
+			if (localMove != moves[a + 1]) { changed = true; }
+			winner = gameEnded();
+			if (winner != ' ')
+			{
+				break;
+			}
+		}
+	}
+	// Otherwise Computer goes first
+	else {
+		clearGameTable();
+		for (int a = 1; a < 22; a = a + 2)
+		{
+			calculateMove();
+			localMove = calculateMove();
+			if (localMove != moves[a + 1]) { changed = true; }
+			winner = gameEnded();
+			if (winner != ' ')
+			{
+				break;
+			}
+			putMove(moves[a]);
+			winner = gameEnded();
+			if (winner != ' ')
+			{
+				break;
+			}
+		}
+	}
+	return changed;
+}
+
+// After losing to the human player adjust the weightings to avoid losing to the same moves.
+void newWeightings(void)
+{
+	bool retVal = false;
+
+	// The weightings are fairly good, so don't want to change too much.
+	// Improvements are around considering the importance of the opponents current and next move so try changing these first.
+
+	// Currently this doesn't make too much in the way of changes. If find that get back to the point that there are known ways to beat the computer, 
+	// will maybe consider a cleverer update algorithm when the human wins.
+
+	// Opponent move should always be less than 1. Modify up or down around a typical value.
+	if (OPPNTMOVEDEFAULT <= 0.8)
+	{
+		OPPNTMOVEDEFAULT = OPPNTMOVEDEFAULT + 0.1; // up 0.1
+		retVal = repeatGame();
+	}
+	else
+	{
+		OPPNTMOVEDEFAULT = OPPNTMOVEDEFAULT - 0.1; // down 0.1
+		retVal = repeatGame();
+	}
+
+
+	// If the above change did not change play try the next move weighting.
+	if (retVal == true)
+	{
+		writeFile();
+		return;
+	}
+	else
+	{ 
+		// Next move should always be below 1. Modify up or down around a typical value.
+		if (NEXTMOVEDEFAULT <= 0.6)
+		{
+			NEXTMOVEDEFAULT = NEXTMOVEDEFAULT + 0.1;
+			retVal = repeatGame();
+		}
+		else
+		{ 
+			NEXTMOVEDEFAULT = NEXTMOVEDEFAULT - 0.1;
+			retVal = repeatGame();
+		}
+
+		if (retVal == true)
+		{
+			writeFile();
+			return;
+		}
+	}
+
 	return;
+}
+
+// Each time the difficulty button is pressed this function is called, it increments the difficulty, cycling round easy, medium and hard.
+void changeDifficulty(void)
+{
+	difficulty++;
+
+	if (difficulty > 3) { difficulty = 1; }
+	if (difficulty < 1) { difficulty = 1; }	// should never happen, but best to be on the safe side.
+}
+
+// Give access to difficulty so that it can be displayed.
+int getDifficulty(void)
+{
+	return difficulty;
 }
