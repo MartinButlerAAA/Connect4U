@@ -4,8 +4,8 @@
 #include <stdio.h>				// For sprintf.
 #include <string.h>				// For strcat and maybe other functions.
 #include <unistd.h>				// For getcwd.
-#include <stdbool.h>
-#include "Connect4AI.h"
+#include <stdbool.h>			// For bools.
+#include "Connect4AI.h"			// For game interface.
 
 char     gameTable[7][6];						// Standard Connect 4 game board with 7 rows and 6 columns.
 static int      winningColumns[7][3][2];		// Array of possible vertical winning groups of 4, with counts of 'R' red and 'Y' pieces.
@@ -15,16 +15,13 @@ static int      winningDiagonalsDown[4][3][2];	// Array of possible diagonal dow
 static double   combinedScoresR[7][6];			// Array used to combine vertical, horizontal and diagonal scores for each board position for red.
 static double   combinedScoresY[7][6];			// Array used to combine vertical, horizontal and diagonal scores for each board position for yellow.
 
-static int		moves[42];						// Array of the moves made during the game.
-static int		moveIdx = 0;					// Index to the game moves.
-
 // The default values below have been selected after optimisation.
-static double	PIECESDEFAULT = 6.0;	 		// (x from documentation) tweaked from 4	
+static double	PIECESDEFAULT = 6.0;	 		// (x from documentation)	
 static double	HORIZONTALDEFAULT = 1.1;		// (h from documentation) 
 static double	VERTICALDEFAULT = 1.3;			// (v from documentation)
 static double	DIAGONALDEFAULT = 1.5;			// (d from documentation)
 static double	NEXTMOVEDEFAULT = 0.5;			// (n from documentation)
-static double	OPPNTMOVEDEFAULT = 0.7;			// weighting for adding opponent score.
+static double	OPPNTMOVEDEFAULT = 0.7;			// (o from documentation)
 
 static int		difficulty = 2;					// game difficulty 1 easy, 2 medium, 3 hard.
 
@@ -129,12 +126,6 @@ void clearGameTable()
 			gameTable[x][y] = ' ';
 		}
 	}
-	// Reset to moves array and index ready to record the player moves again.
-	moveIdx = 0;
-	for (int a = 0; a < 42; a++)
-	{
-		moves[a] = 0;
-	}
 }
 
 void initialiseGame(void)
@@ -160,9 +151,6 @@ bool putMove(int move)
 			if (gameTable[move - 1][y] == ' ')
 			{
 				gameTable[move - 1][y] = 'R';
-				// Record the move made to support weighting updates.
-				moves[moveIdx] = move;
-				moveIdx++;
 				return true;
 			}
 		}
@@ -702,11 +690,6 @@ int calculateMove(void)
 	{
 		if (gameTable[move][y] == ' ')
 		{
-			// Record the move made to support weighting updates.
-			// The computer moves have 11 added to be 11 for first column and 17 for the last column.
-			// This makes it easy to see the difference between the player and computer moves.
-			moves[moveIdx] = move + 11;
-			moveIdx++;
 			gameTable[move][y] = 'Y';
 			break;
 		}
@@ -714,110 +697,81 @@ int calculateMove(void)
 	return move + 11; // Return the move in the format used for logging the game moves.
 }
 
-// This function goes through the game moves to see if the computer moves have changes.
-// Return value of false is no change, true is a change.
-bool repeatGame(void)
-{
-	bool changed = false;
-	int localMove;
-	char winner;
-
-	// If the first recorded move does not have 10 added then the human player went first.
-	if (moves[0] < 10)
-	{
-		clearGameTable();
-		for (int a = 0; a < 22; a = a + 2)
-		{
-			putMove(moves[a]); // Use the recorded players move.
-			winner = gameEnded();
-			if (winner != ' ')
-			{	// This construct just exits the loop if the game has ended
-				break;
-			}
-			localMove = calculateMove();
-			if (localMove != moves[a + 1]) { changed = true; }
-			winner = gameEnded();
-			if (winner != ' ')
-			{
-				break;
-			}
-		}
-	}
-	// Otherwise Computer goes first
-	else {
-		clearGameTable();
-		for (int a = 1; a < 22; a = a + 2)
-		{
-			calculateMove();
-			localMove = calculateMove();
-			if (localMove != moves[a + 1]) { changed = true; }
-			winner = gameEnded();
-			if (winner != ' ')
-			{
-				break;
-			}
-			putMove(moves[a]);
-			winner = gameEnded();
-			if (winner != ' ')
-			{
-				break;
-			}
-		}
-	}
-	return changed;
-}
-
-// After losing to the human player adjust the weightings to avoid losing to the same moves.
+// After losing to the human player, adjust the weightings to avoid losing to the same moves.
+// The simplest way to do this is to select a new set of weightings that are known to be good.
+// Each set of weightings plays differently, so swapping them will avoid the player using a known set of moves.
 void newWeightings(void)
 {
-	bool retVal = false;
+	// Create integers for comparison. Comparing floating point numbers to exact values can cause problems with rounding.
+	// Add 0.05 to the values so that rounding (dropping the fraction) works correctly.
+	unsigned int hint = (unsigned int)((HORIZONTALDEFAULT + 0.05f) * 10);
+	unsigned int vint = (unsigned int)((VERTICALDEFAULT + 0.05f) * 10);
+	unsigned int dint = (unsigned int)((DIAGONALDEFAULT + 0.05f) * 10);
+	unsigned int nint = (unsigned int)((NEXTMOVEDEFAULT + 0.05f) * 10);
+	unsigned int oint = (unsigned int)((OPPNTMOVEDEFAULT + 0.05f) * 10);
 
-	// The weightings are fairly good, so don't want to change too much.
-	// Improvements are around considering the importance of the opponents current and next move so try changing these first.
+	// x is left unchanged.
+	PIECESDEFAULT = 6.0;	 		// (x from documentation)
 
-	// Currently this doesn't make too much in the way of changes. If find that get back to the point that there are known ways to beat the computer, 
-	// will maybe consider a cleverer update algorithm when the human wins.
+	// Check the current weightings and select the next in sequence, then write these to the data file.
+	// This should provide 5 known good sets of weightings. Each time the player wins the set is changed.
 
-	// Opponent move should always be less than 1. Modify up or down around a typical value.
-	if (OPPNTMOVEDEFAULT <= 0.8)
+	// h = 1.1 v = 1.3 d = 1.5 n = 0.5 o = 0.7
+	if ((hint == 11) && (vint == 13) && (dint == 15) && (nint == 5) && (oint == 7))
 	{
-		OPPNTMOVEDEFAULT = OPPNTMOVEDEFAULT + 0.1; // up 0.1
-		retVal = repeatGame();
-	}
-	else
-	{
-		OPPNTMOVEDEFAULT = OPPNTMOVEDEFAULT - 0.1; // down 0.1
-		retVal = repeatGame();
-	}
-
-
-	// If the above change did not change play try the next move weighting.
-	if (retVal == true)
-	{
+		HORIZONTALDEFAULT = 1.0;
+		VERTICALDEFAULT = 1.0;
+		DIAGONALDEFAULT = 1.0;
+		NEXTMOVEDEFAULT = 0.5;
+		OPPNTMOVEDEFAULT = 0.5;
 		writeFile();
 		return;
 	}
-	else
-	{ 
-		// Next move should always be below 1. Modify up or down around a typical value.
-		if (NEXTMOVEDEFAULT <= 0.6)
-		{
-			NEXTMOVEDEFAULT = NEXTMOVEDEFAULT + 0.1;
-			retVal = repeatGame();
-		}
-		else
-		{ 
-			NEXTMOVEDEFAULT = NEXTMOVEDEFAULT - 0.1;
-			retVal = repeatGame();
-		}
 
-		if (retVal == true)
-		{
-			writeFile();
-			return;
-		}
+	// h = 1.0 v = 1.0 d = 1.0 n = 0.5 o = 0.5
+	if ((hint == 10) && (vint == 10) && (dint == 10) && (nint == 5) && (oint == 5))
+	{
+		HORIZONTALDEFAULT = 1.0;
+		VERTICALDEFAULT = 1.0;
+		DIAGONALDEFAULT = 1.0;
+		NEXTMOVEDEFAULT = 0.5;
+		OPPNTMOVEDEFAULT = 0.8;
+		writeFile();
+		return;
 	}
 
+	// h = 1.0 v = 1.0 d = 1.0 n = 0.5 o = 0.8
+	if ((hint == 10) && (vint == 10) && (dint == 10) && (nint == 5) && (oint == 8))
+	{
+		HORIZONTALDEFAULT = 1.0;
+		VERTICALDEFAULT = 1.0;
+		DIAGONALDEFAULT = 1.0;
+		NEXTMOVEDEFAULT = 0.8;
+		OPPNTMOVEDEFAULT = 0.5;
+		writeFile();
+		return;
+	}
+
+	// h = 1.0 v = 1.0 d = 1.0 n = 0.8 o = 0.5
+	if ((hint == 10) && (vint == 10) && (dint == 10) && (nint == 8) && (oint == 5))
+	{
+		HORIZONTALDEFAULT = 1.0;
+		VERTICALDEFAULT = 1.1;
+		DIAGONALDEFAULT = 1.2;
+		NEXTMOVEDEFAULT = 0.7;
+		OPPNTMOVEDEFAULT = 0.7;
+		writeFile();
+		return;
+	}
+
+	// If the current set are not matched they are the last in sequence or a trial set.
+	// Set the values to the default set from intial optimisation to be back on the sequence.
+	HORIZONTALDEFAULT = 1.1;
+	VERTICALDEFAULT = 1.3;
+	DIAGONALDEFAULT = 1.5;
+	NEXTMOVEDEFAULT = 0.5;
+	OPPNTMOVEDEFAULT = 0.7;
+	writeFile();
 	return;
 }
 
